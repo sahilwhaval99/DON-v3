@@ -26,8 +26,9 @@ SQLITE_PATH = DATA_DIR / "don3.db"
 
 # ---------------- Gemini (the brain) ----------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Fast + free model. Can bump to "gemini-1.5-pro" for deeper answers.
-GEMINI_MODEL = os.getenv("DON_GEMINI_MODEL", "gemini-1.5-flash")
+# Fast + free model. Current Gemini model names (older 1.5 names are retired).
+# You can try "gemini-2.5-flash" for a newer version if available on your key.
+GEMINI_MODEL = os.getenv("DON_GEMINI_MODEL", "gemini-2.0-flash")
 
 SYSTEM_PROMPT = (
     "You are DON, a highly capable personal AI assistant, similar to JARVIS. "

@@ -71,23 +71,47 @@ class Brain:
                     "Get one at https://aistudio.google.com/apikey.")
         try:
             types = self._types
-            # Pass the tool functions directly; the SDK does automatic function
-            # calling (it invokes them and feeds results back to the model).
             tool_fns = list(self.tools.values())
             config_obj = types.GenerateContentConfig(
                 system_instruction=config.SYSTEM_PROMPT,
                 tools=tool_fns if tool_fns else None,
             )
-            resp = self._client.models.generate_content(
+            # Use the chat interface: recommended for automatic function calling.
+            chat = self._client.chats.create(
                 model=config.GEMINI_MODEL,
-                contents=self._contents(user_text),
                 config=config_obj,
             )
+            resp = chat.send_message(self._contents(user_text))
             text = (getattr(resp, "text", None) or "").strip()
             return text or "I processed that but have nothing further to add."
         except Exception as exc:
+            msg = str(exc)
+            if "NOT_FOUND" in msg or "not found" in msg or "404" in msg:
+                return (f"The model '{config.GEMINI_MODEL}' isn't available on your "
+                        f"key. {self._suggest_models()}")
             return (f"I hit a problem thinking about that: {exc}. "
                     f"(If this mentions the API key, double-check it in your .env.)")
+
+    def _suggest_models(self) -> str:
+        """List models the key can actually use — so we never guess blindly."""
+        try:
+            names = []
+            for m in self._client.models.list():
+                actions = getattr(m, "supported_actions", None) or \
+                          getattr(m, "supported_generation_methods", []) or []
+                name = getattr(m, "name", "")
+                if "generateContent" in actions or not actions:
+                    short = name.split("/")[-1]
+                    if "flash" in short or "pro" in short:
+                        names.append(short)
+            names = sorted(set(names))[:6]
+            if names:
+                return ("Try setting DON_GEMINI_MODEL in your .env to one of: "
+                        + ", ".join(names))
+        except Exception:
+            pass
+        return ("Set DON_GEMINI_MODEL in your .env to a current model, e.g. "
+                "gemini-2.0-flash or gemini-2.5-flash.")
 
 
 if __name__ == "__main__":
