@@ -22,6 +22,7 @@ class Brain:
         self.memory = memory
         self._client = None
         self._types = None
+        self._session = None  # persistent chat session (reused for speed)
         self.model = config.GEMINI_MODEL  # may be replaced by _resolve_model()
         self._init()
 
@@ -107,6 +108,25 @@ class Brain:
         except Exception:
             return user_text
 
+    def _ensure_session(self):
+        """Create ONE persistent chat session and reuse it (big speed win).
+
+        Reusing the session means Gemini keeps the conversation context itself,
+        so we don't resend the whole history on every message.
+        """
+        if self._session is not None:
+            return self._session
+        types = self._types
+        config_obj = types.GenerateContentConfig(
+            system_instruction=config.SYSTEM_PROMPT,
+            temperature=config.GEMINI_TEMPERATURE,
+            max_output_tokens=config.GEMINI_MAX_TOKENS,
+            tools=[types.Tool(function_declarations=self._declarations())]
+            if self.tools else None,
+        )
+        self._session = self._client.chats.create(model=self.model, config=config_obj)
+        return self._session
+
     def chat(self, user_text: str) -> str:
         """Return DON's reply, using tools automatically. Never raises."""
         if not self._client:
@@ -114,19 +134,10 @@ class Brain:
                     "key to the .env file (GEMINI_API_KEY=...), then restart me. "
                     "Get one at https://aistudio.google.com/apikey.")
         types = self._types
-
-        # We do MANUAL function calling (more reliable than the SDK's automatic
-        # dispatch, which can raise isinstance() errors). We declare the tools,
-        # run any tool the model requests ourselves, and feed the result back.
-        config_obj = types.GenerateContentConfig(
-            system_instruction=config.SYSTEM_PROMPT,
-            tools=[types.Tool(function_declarations=self._declarations())]
-            if self.tools else None,
-        )
-
         try:
-            chat = self._client.chats.create(model=self.model, config=config_obj)
-            resp = self._send_with_retry(chat, self._contents(user_text))
+            chat = self._ensure_session()
+            # Persistent session already holds history, so just send the message.
+            resp = self._send_with_retry(chat, user_text)
 
             # Handle up to a few rounds of tool calls.
             for _ in range(5):
@@ -147,6 +158,8 @@ class Brain:
             text = (getattr(resp, "text", None) or "").strip()
             return text or "Done, sir."
         except Exception as exc:
+            # If the session broke, drop it so the next call rebuilds cleanly.
+            self._session = None
             return self._friendly_error(exc)
 
     # -- function-calling helpers -------------------------------------- #

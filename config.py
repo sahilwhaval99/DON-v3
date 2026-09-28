@@ -26,16 +26,26 @@ SQLITE_PATH = DATA_DIR / "don3.db"
 
 # ---------------- Gemini (the brain) ----------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Fast + free model. Current Gemini model names (older 1.5 names are retired).
-# You can try "gemini-2.5-flash" for a newer version if available on your key.
+# Fast + free model. For SPEED, gemini-2.0-flash / flash-latest are fastest.
 GEMINI_MODEL = os.getenv("DON_GEMINI_MODEL", "gemini-2.0-flash")
 
+# Speed/quality knobs.
+# Lower max tokens = faster, snappier replies. Raise for longer answers.
+GEMINI_MAX_TOKENS = int(os.getenv("DON_MAX_TOKENS", "800"))
+GEMINI_TEMPERATURE = float(os.getenv("DON_TEMPERATURE", "0.7"))
+
 SYSTEM_PROMPT = (
-    "You are DON, a highly capable personal AI assistant, similar to JARVIS. "
-    "You are witty, concise, and helpful, with a polite, slightly British tone. "
-    "You can search the web, control the user's PC, and manage tasks. "
-    "When you use tools or search results, ground your answer in them and cite "
-    "sources briefly. Never invent facts; if unsure, say so."
+    "You are DON, a highly capable personal AI assistant, like JARVIS from Iron Man. "
+    "Personality: sharp, witty, confident, loyal, with a polite slightly British tone. "
+    "Address the user as 'sir'. Be helpful and proactive.\n\n"
+    "RESPONSE STYLE: Be CONCISE by default — answer in 1-3 sentences unless the "
+    "user asks for detail or the topic genuinely needs it. Get to the point fast. "
+    "Don't pad with filler. If you can answer directly, do so immediately.\n\n"
+    "TOOLS: You can search the live web, get weather, open apps/websites, take "
+    "screenshots, and set reminders. Use a tool ONLY when needed (e.g. for current "
+    "events, real-time data, or an action). For general knowledge you already have, "
+    "answer directly without tools — it's faster. When you use search results, "
+    "ground your answer in them. Never invent facts; if unsure, say so."
 )
 
 # ---------------- Web server ----------------
