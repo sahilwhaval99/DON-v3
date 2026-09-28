@@ -57,6 +57,34 @@ build the full dashboard next.
 | `assistant.py` | wires brain + tools + memory |
 | `test_brain.py` | **Layer 1 CLI test** |
 
-## Coming next (after Layer 1 is confirmed)
-- FastAPI server + WebSocket dashboard (red/blue UI)
-- More tools; optional voice
+---
+
+## Layer 2: the dashboard (run this to use DON in your browser)
+
+After the brain test works, launch the full red/blue dashboard:
+
+```bat
+python main.py
+```
+
+Your browser opens automatically at **http://127.0.0.1:8000** with:
+- 💬 Chat with DON (same working Gemini brain)
+- 🌐 Live web search, weather, PC control, reminders
+- 📊 Live CPU/memory gauges, activity log, reminders panel
+- 🎨 Animated red/blue JARVIS theme
+
+**Leave the terminal window open** while using the dashboard (it's the server).
+Press Ctrl+C in the terminal to stop DON.
+
+| File | Purpose |
+|------|---------|
+| `server.py` | FastAPI + WebSocket backend |
+| `web/` | dashboard HTML/CSS/JS |
+| `main.py` | starts the server + opens the browser |
+
+### Troubleshooting
+- **"NO API KEY" / "Brain: offline"** → add `GEMINI_API_KEY` to `.env`.
+- **"Connection error"** in chat → the server window was closed or a command was
+  typed into it; restart with `python main.py` and leave it running.
+- **Occasional "servers busy"** → Gemini was momentarily overloaded; ask again
+  (DON auto-retries transient errors).
