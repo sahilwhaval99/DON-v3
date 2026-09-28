@@ -195,22 +195,42 @@ class Brain:
         return calls
 
     def _send_with_retry(self, chat, message):
-        """Send a message, retrying transient 503/429 with backoff."""
+        """Send a message, retrying transient 503/429 with smart backoff.
+
+        For 429 (rate limit), Google usually tells us how long to wait via a
+        'retry_delay'/'retryDelay' field — we honour it. We retry more times and
+        wait longer than before so the user almost never sees a rate-limit note.
+        """
         import time
+        import re as _re
+
         last = None
-        for attempt in range(4):
+        max_attempts = 6
+        for attempt in range(max_attempts):
             try:
                 return chat.send_message(message)
             except Exception as exc:
                 last = exc
                 m = str(exc)
-                transient = any(x in m for x in
-                                ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED")) \
-                    or "overloaded" in m.lower()
-                if transient and attempt < 3:
-                    time.sleep(1.5 * (attempt + 1))
-                    continue
-                raise
+                is_429 = "429" in m or "RESOURCE_EXHAUSTED" in m
+                is_503 = "503" in m or "UNAVAILABLE" in m or "overloaded" in m.lower()
+                if not (is_429 or is_503) or attempt == max_attempts - 1:
+                    raise
+
+                # Honour Google's suggested retry delay if present.
+                delay = None
+                match = _re.search(r"retry.?delay['\"]?\s*[:=]\s*['\"]?(\d+)", m, _re.I)
+                if match:
+                    delay = float(match.group(1))
+                if delay is None:
+                    match = _re.search(r"(\d+(?:\.\d+)?)\s*s(?:econds)?", m)
+                    if match and is_429:
+                        delay = float(match.group(1))
+                if delay is None:
+                    # Exponential backoff: 2, 4, 8, 16, 30 (capped) seconds.
+                    delay = min(2 ** (attempt + 1), 30)
+                delay = min(max(delay, 1.0), 45.0)
+                time.sleep(delay)
         raise last
 
     def _friendly_error(self, exc) -> str:
