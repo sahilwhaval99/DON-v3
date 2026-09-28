@@ -61,9 +61,15 @@ build the full dashboard next.
 
 ## Layer 2: the dashboard (run this to use DON in your browser)
 
-After the brain test works, launch the full red/blue dashboard:
+After the brain test works, launch the full red/blue dashboard.
 
+**Easiest way — double-click `start_don.bat`** (Windows). It activates the
+environment and starts DON automatically. On the very first run it also sets up
+the environment and installs dependencies.
+
+Or run manually:
 ```bat
+.venv\Scripts\activate
 python main.py
 ```
 
