@@ -51,7 +51,7 @@ build the full dashboard next.
 ## What's built
 | File | Purpose |
 |------|---------|
-| `brain.py` | Gemini brain with tool-calling |
+| `brain.py` | Gemini brain (new `google-genai` SDK) with automatic tool-calling |
 | `tools.py` | web search, weather, open apps/sites, screenshot, reminders |
 | `memory.py` | SQLite conversation history + reminders |
 | `assistant.py` | wires brain + tools + memory |

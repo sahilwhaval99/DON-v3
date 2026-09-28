@@ -1,34 +1,27 @@
 """
-DON v3.0 brain — Google Gemini with function-calling (agent tools).
+DON v3.0 brain — Google Gemini via the NEW `google-genai` SDK.
 
-This is the core upgrade over v2.0: instead of a dumb local model, DON now uses
-Gemini and can CALL TOOLS (web search, weather, open apps, etc.). Gemini decides
-when to use a tool, we run it, and feed the result back so DON answers with real,
-current information.
+Google deprecated the old `google-generativeai` package; this uses the current
+`google-genai` client, which has clean automatic function-calling: you pass
+plain Python functions as `tools` and the SDK handles the call/response loop
+for you (automatic function calling), so DON can search the web, open apps, etc.
 
-Design:
-* If GEMINI_API_KEY is missing or the library isn't installed, chat() returns a
-  clear setup message instead of crashing.
-* Tools are plain Python functions registered in a registry; the server passes
-  in the actual implementations (so web/pc tools can be swapped/tested).
+Defensive: if the key or library is missing, chat() returns a clear setup
+message instead of crashing.
 """
 from __future__ import annotations
-
-import json
 
 import config
 
 
 class Brain:
     def __init__(self, tools: dict | None = None, memory=None) -> None:
-        """
-        tools: mapping of {tool_name: callable(**kwargs) -> str}
-        memory: optional object with recent_turns()/log/recall for context
-        """
+        # tools: {name: callable}; the callables' signatures + docstrings are
+        # what the SDK shows to Gemini, so they must be well-typed/documented.
         self.tools = tools or {}
         self.memory = memory
-        self._model = None
-        self._genai = None
+        self._client = None
+        self._types = None
         self._init()
 
     def _init(self) -> None:
@@ -37,142 +30,64 @@ class Brain:
                   "Get a free key at https://aistudio.google.com/apikey")
             return
         try:
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types
 
-            genai.configure(api_key=config.GEMINI_API_KEY)
-            self._genai = genai
-            self._model = genai.GenerativeModel(
-                model_name=config.GEMINI_MODEL,
-                system_instruction=config.SYSTEM_PROMPT,
-                tools=list(self._tool_declarations()) or None,
-            )
+            self._client = genai.Client(api_key=config.GEMINI_API_KEY)
+            self._types = types
         except Exception as exc:
             print(f"[brain] Gemini unavailable ({exc}). "
-                  f"Install: pip install google-generativeai")
-            self._model = None
+                  f"Install: pip install google-genai")
+            self._client = None
 
     @property
     def available(self) -> bool:
-        return self._model is not None
+        return self._client is not None
 
-    def _tool_declarations(self):
-        """Describe our tools to Gemini so it knows when to call them."""
-        # Keep declarations aligned with the tool functions the server registers.
-        specs = {
-            "web_search": {
-                "description": "Search the live internet for current information "
-                               "and return the top results. Use for anything recent, "
-                               "factual lookups, news, prices, or 'search for X'.",
-                "params": {"query": "The search query"},
-            },
-            "get_weather": {
-                "description": "Get the current weather for a location.",
-                "params": {"location": "City name, optional; defaults to user's city"},
-            },
-            "open_app": {
-                "description": "Open an application or website on the user's PC.",
-                "params": {"name": "App or website name, e.g. 'notepad', 'youtube'"},
-            },
-            "take_screenshot": {
-                "description": "Capture a screenshot of the user's screen.",
-                "params": {},
-            },
-            "add_reminder": {
-                "description": "Save a reminder/note for the user.",
-                "params": {"text": "The reminder text", "when": "When, e.g. '5pm' or 'in 10 min'"},
-            },
-        }
-        declarations = []
-        for name, spec in specs.items():
-            if name not in self.tools:
-                continue
-            props = {k: {"type": "string", "description": v}
-                     for k, v in spec["params"].items()}
-            declarations.append({
-                "name": name,
-                "description": spec["description"],
-                "parameters": {
-                    "type": "object",
-                    "properties": props,
-                    "required": list(props.keys()) if name != "get_weather" else [],
-                },
-            })
-        return declarations
+    def _contents(self, user_text: str) -> str:
+        """Build the prompt, prepending a little recent history for context."""
+        if self.memory is None:
+            return user_text
+        try:
+            turns = self.memory.recent_turns(limit=6)
+            if not turns:
+                return user_text
+            history_lines = []
+            for t in turns:
+                if t.get("user"):
+                    history_lines.append(f"User: {t['user']}")
+                if t.get("assistant"):
+                    history_lines.append(f"DON: {t['assistant']}")
+            history = "\n".join(history_lines)
+            return f"(Recent conversation:\n{history}\n)\nUser: {user_text}"
+        except Exception:
+            return user_text
 
     def chat(self, user_text: str) -> str:
-        """Return DON's reply, using tools when Gemini decides to. Never raises."""
-        if not self._model:
+        """Return DON's reply, using tools automatically. Never raises."""
+        if not self._client:
             return ("My brain isn't connected yet. Please add your free Gemini API "
                     "key to the .env file (GEMINI_API_KEY=...), then restart me. "
                     "Get one at https://aistudio.google.com/apikey.")
         try:
-            chat = self._model.start_chat(history=self._history())
-            response = chat.send_message(user_text)
-
-            # Handle up to a few rounds of tool calls.
-            for _ in range(5):
-                calls = self._extract_calls(response)
-                if not calls:
-                    break
-                tool_results = []
-                for call in calls:
-                    name = call["name"]
-                    args = call["args"]
-                    fn = self.tools.get(name)
-                    result = fn(**args) if fn else f"(no tool named {name})"
-                    tool_results.append({"name": name, "response": {"result": str(result)}})
-                # Send results back to Gemini for a final natural-language answer.
-                response = chat.send_message(
-                    [self._genai.protos.Part(function_response=self._genai.protos.FunctionResponse(
-                        name=tr["name"], response=tr["response"])) for tr in tool_results]
-                )
-            return self._text_of(response)
+            types = self._types
+            # Pass the tool functions directly; the SDK does automatic function
+            # calling (it invokes them and feeds results back to the model).
+            tool_fns = list(self.tools.values())
+            config_obj = types.GenerateContentConfig(
+                system_instruction=config.SYSTEM_PROMPT,
+                tools=tool_fns if tool_fns else None,
+            )
+            resp = self._client.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=self._contents(user_text),
+                config=config_obj,
+            )
+            text = (getattr(resp, "text", None) or "").strip()
+            return text or "I processed that but have nothing further to add."
         except Exception as exc:
-            return f"I hit a problem thinking about that: {exc}"
-
-    # -- helpers ------------------------------------------------------- #
-    def _history(self) -> list:
-        hist = []
-        if self.memory is not None:
-            try:
-                for turn in self.memory.recent_turns(limit=6):
-                    if turn.get("user"):
-                        hist.append({"role": "user", "parts": [turn["user"]]})
-                    if turn.get("assistant"):
-                        hist.append({"role": "model", "parts": [turn["assistant"]]})
-            except Exception:
-                pass
-        return hist
-
-    @staticmethod
-    def _extract_calls(response) -> list[dict]:
-        calls = []
-        try:
-            for cand in response.candidates:
-                for part in cand.content.parts:
-                    fc = getattr(part, "function_call", None)
-                    if fc and fc.name:
-                        calls.append({"name": fc.name, "args": dict(fc.args or {})})
-        except Exception:
-            pass
-        return calls
-
-    @staticmethod
-    def _text_of(response) -> str:
-        try:
-            return (response.text or "").strip()
-        except Exception:
-            # Fallback: stitch text parts together.
-            out = []
-            try:
-                for cand in response.candidates:
-                    for part in cand.content.parts:
-                        if getattr(part, "text", None):
-                            out.append(part.text)
-            except Exception:
-                pass
-            return (" ".join(out).strip()
-                    or "I processed that but have nothing further to add.")
+            return (f"I hit a problem thinking about that: {exc}. "
+                    f"(If this mentions the API key, double-check it in your .env.)")
 
 
 if __name__ == "__main__":
