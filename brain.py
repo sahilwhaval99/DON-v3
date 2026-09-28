@@ -22,6 +22,7 @@ class Brain:
         self.memory = memory
         self._client = None
         self._types = None
+        self.model = config.GEMINI_MODEL  # may be replaced by _resolve_model()
         self._init()
 
     def _init(self) -> None:
@@ -35,10 +36,53 @@ class Brain:
 
             self._client = genai.Client(api_key=config.GEMINI_API_KEY)
             self._types = types
+            # Resolve a model that actually works with this key/SDK version.
+            self.model = self._resolve_model(config.GEMINI_MODEL)
+            print(f"[brain] Using model: {self.model}")
         except Exception as exc:
             print(f"[brain] Gemini unavailable ({exc}). "
                   f"Install: pip install google-genai")
             self._client = None
+
+    def _resolve_model(self, preferred: str) -> str:
+        """Return a usable model name in the exact format this SDK expects.
+
+        The .list() call returns names like 'models/gemini-2.5-flash'. Some SDK
+        versions want the full 'models/...' path. We find the preferred model
+        among the key's real models and return its exact name; if not found, we
+        fall back to the first flash model available.
+        """
+        try:
+            usable = []
+            for m in self._client.models.list():
+                name = getattr(m, "name", "") or ""
+                actions = (getattr(m, "supported_actions", None)
+                           or getattr(m, "supported_generation_methods", None) or [])
+                if actions and "generateContent" not in actions:
+                    continue
+                usable.append(name)  # e.g. 'models/gemini-2.5-flash'
+
+            # Try to match the preferred name (with or without 'models/' prefix).
+            pref_short = preferred.split("/")[-1]
+            for full in usable:
+                if full.split("/")[-1] == pref_short:
+                    return full
+
+            # Fall back to the first plain 'flash' text model (avoid tts/image).
+            for full in usable:
+                short = full.split("/")[-1]
+                if "flash" in short and not any(x in short for x in
+                                                ("tts", "image", "audio", "vision", "preview")):
+                    return full
+            # Last resort: any flash, then any usable model.
+            for full in usable:
+                if "flash" in full.split("/")[-1]:
+                    return full
+            if usable:
+                return usable[0]
+        except Exception as exc:
+            print(f"[brain] Could not list models ({exc}); using preferred as-is.")
+        return preferred
 
     @property
     def available(self) -> bool:
@@ -78,7 +122,7 @@ class Brain:
             )
             # Use the chat interface: recommended for automatic function calling.
             chat = self._client.chats.create(
-                model=config.GEMINI_MODEL,
+                model=self.model,
                 config=config_obj,
             )
             resp = chat.send_message(self._contents(user_text))
@@ -87,7 +131,7 @@ class Brain:
         except Exception as exc:
             msg = str(exc)
             if "NOT_FOUND" in msg or "not found" in msg or "404" in msg:
-                return (f"The model '{config.GEMINI_MODEL}' isn't available on your "
+                return (f"The model '{self.model}' isn't available on your "
                         f"key. {self._suggest_models()}")
             return (f"I hit a problem thinking about that: {exc}. "
                     f"(If this mentions the API key, double-check it in your .env.)")
