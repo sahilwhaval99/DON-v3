@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DON v3.0 — AI Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <canvas id="bg"></canvas>
+
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <span class="core"></span>
+        <h1>DON <span class="ver">v3.0</span></h1>
+      </div>
+      <div class="hright">
+        <div id="clock" class="clock">--:--:--</div>
+        <div id="date" class="date"></div>
+        <div class="status"><span id="dot" class="dot"></span><span id="stat">CONNECTING…</span></div>
+      </div>
+    </header>
+
+    <div class="body">
+      <!-- Left: capabilities -->
+      <aside class="side left">
+        <div class="ptitle">CAPABILITIES</div>
+        <ul class="caps">
+          <li><span>🌐</span> Live web search</li>
+          <li><span>🧠</span> Smart conversation</li>
+          <li><span>🌦️</span> Weather</li>
+          <li><span>💻</span> Open apps &amp; sites</li>
+          <li><span>📸</span> Screenshots</li>
+          <li><span>⏰</span> Reminders</li>
+        </ul>
+        <div class="ptitle" style="margin-top:18px">TRY ASKING</div>
+        <ul class="examples" id="examples">
+          <li data-q="What's the latest AI news?">"What's the latest AI news?"</li>
+          <li data-q="What's the weather in London?">"Weather in London?"</li>
+          <li data-q="Open calculator">"Open calculator"</li>
+          <li data-q="Remind me to call mom at 6pm">"Remind me at 6pm"</li>
+          <li data-q="Who are you?">"Who are you?"</li>
+        </ul>
+      </aside>
+
+      <!-- Center: chat -->
+      <main class="center">
+        <div class="convo" id="convo">
+          <div class="msg don"><div class="b">Good day, sir. DON v3.0 online — powered by Gemini, with live web access and PC control. How may I help?</div></div>
+        </div>
+        <form id="form" class="input">
+          <input id="text" type="text" autocomplete="off" placeholder="Ask DON anything…  (e.g. what's the weather in Tokyo?)" />
+          <button type="submit" class="send" id="send">SEND ▸</button>
+        </form>
+      </main>
+
+      <!-- Right: analytics -->
+      <aside class="side right">
+        <div class="ptitle">SYSTEM ANALYTICS</div>
+        <div class="gauge"><div class="glabel">CPU</div><div class="bar"><div id="cpu" class="fill blue"></div></div><div id="cpuv" class="gv">0%</div></div>
+        <div class="gauge"><div class="glabel">MEMORY</div><div class="bar"><div id="mem" class="fill red"></div></div><div id="memv" class="gv">0%</div></div>
+        <div class="ptitle" style="margin-top:18px">REMINDERS</div>
+        <ul id="reminders" class="reminders"><li class="empty">None yet.</li></ul>
+        <div class="ptitle" style="margin-top:18px">ACTIVITY</div>
+        <ul id="log" class="log"></ul>
+      </aside>
+    </div>
+
+    <!-- Footer -->
+    <footer class="foot">
+      <span>Brain: <b id="fmodel">{{ model }}</b></span>
+      <span id="fbrain" class="warn">checking…</span>
+      <span>Network: <b>cloud (Gemini)</b></span>
+      <span>Session: <b id="fup">00:00:00</b></span>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
