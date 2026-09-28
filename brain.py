@@ -113,23 +113,47 @@ class Brain:
             return ("My brain isn't connected yet. Please add your free Gemini API "
                     "key to the .env file (GEMINI_API_KEY=...), then restart me. "
                     "Get one at https://aistudio.google.com/apikey.")
+        import time
+
+        types = self._types
+        tool_fns = list(self.tools.values())
+        config_obj = types.GenerateContentConfig(
+            system_instruction=config.SYSTEM_PROMPT,
+            tools=tool_fns if tool_fns else None,
+        )
+        contents = self._contents(user_text)
+
+        # Retry transient errors (503 overloaded, 429 rate-limit) with backoff.
+        last_exc = None
+        for attempt in range(4):
+            try:
+                chat = self._client.chats.create(model=self.model, config=config_obj)
+                resp = chat.send_message(contents)
+                text = (getattr(resp, "text", None) or "").strip()
+                return text or "I processed that but have nothing further to add."
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                transient = ("503" in msg or "UNAVAILABLE" in msg
+                             or "429" in msg or "RESOURCE_EXHAUSTED" in msg
+                             or "overloaded" in msg.lower())
+                if transient and attempt < 3:
+                    time.sleep(1.5 * (attempt + 1))  # 1.5s, 3s, 4.5s
+                    continue
+                break
+
+        # All retries exhausted — return a friendly, specific message.
+        exc = last_exc
         try:
-            types = self._types
-            tool_fns = list(self.tools.values())
-            config_obj = types.GenerateContentConfig(
-                system_instruction=config.SYSTEM_PROMPT,
-                tools=tool_fns if tool_fns else None,
-            )
-            # Use the chat interface: recommended for automatic function calling.
-            chat = self._client.chats.create(
-                model=self.model,
-                config=config_obj,
-            )
-            resp = chat.send_message(self._contents(user_text))
-            text = (getattr(resp, "text", None) or "").strip()
-            return text or "I processed that but have nothing further to add."
-        except Exception as exc:
+            raise exc
+        except Exception:
             msg = str(exc)
+            if "503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower():
+                return ("Google's servers are momentarily busy (the model is under "
+                        "heavy demand). Please try that again in a few seconds, sir.")
+            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                return ("I've hit a brief rate limit. Give me a few seconds and try "
+                        "again, sir.")
             if "NOT_FOUND" in msg or "not found" in msg or "404" in msg:
                 return (f"The model '{self.model}' isn't available on your "
                         f"key. {self._suggest_models()}")
