@@ -54,7 +54,9 @@
           <div class="msg don"><div class="b">Good day, sir. DON v3.0 online — powered by Gemini, with live web access and PC control. How may I help?</div></div>
         </div>
         <form id="form" class="input">
-          <input id="text" type="text" autocomplete="off" placeholder="Ask DON anything…  (e.g. what's the weather in Tokyo?)" />
+          <button type="button" class="mic" id="mic" title="Click and speak">🎙</button>
+          <input id="text" type="text" autocomplete="off" placeholder="Ask DON anything…  (or click 🎙 to speak)" />
+          <button type="button" class="speak-toggle" id="speakToggle" title="DON speaks replies aloud">🔊</button>
           <button type="submit" class="send" id="send">SEND ▸</button>
         </form>
       </main>

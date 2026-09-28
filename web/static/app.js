@@ -2,6 +2,7 @@
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
+  let speakFn = null;  // set up in the Voice section; called when DON replies
 
   // Clock
   function tick(){
@@ -48,7 +49,9 @@
       });
       const data = await res.json();
       thinking.remove();
-      add("don", data.reply || "…");
+      const reply = data.reply || "…";
+      add("don", reply);
+      if (speakFn) speakFn(reply);
       logActivity("You: " + text.slice(0, 40));
       refreshReminders();
     } catch(e){
@@ -130,6 +133,59 @@
     for (let y=-sp+off; y<bg.height; y+=sp){ g.strokeStyle="rgba(255,59,59,.045)"; g.beginPath(); g.moveTo(0,y); g.lineTo(bg.width,y); g.stroke(); }
     requestAnimationFrame(draw);
   })();
+
+  // ---------------- Voice ----------------
+  // Speech OUTPUT (DON speaks replies) — on by default.
+  let speakOn = true;
+  const speakToggle = $("#speakToggle");
+  function speak(text){
+    if (!speakOn || !("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.05; u.pitch = 1.0;
+      // Prefer a British male-ish voice if available (JARVIS vibe).
+      const voices = window.speechSynthesis.getVoices();
+      const pref = voices.find(v => /en-GB/i.test(v.lang)) ||
+                   voices.find(v => /en/i.test(v.lang));
+      if (pref) u.voice = pref;
+      window.speechSynthesis.speak(u);
+    } catch(_){}
+  }
+  speakToggle.addEventListener("click", () => {
+    speakOn = !speakOn;
+    speakToggle.classList.toggle("off", !speakOn);
+    speakToggle.textContent = speakOn ? "🔊" : "🔇";
+    if (!speakOn) window.speechSynthesis && window.speechSynthesis.cancel();
+  });
+  speakFn = speak;  // wire speech output into the send() flow
+
+  // Speech INPUT (mic → text) using the browser's SpeechRecognition.
+  const mic = $("#mic");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recog = null, listening = false;
+  if (SR){
+    recog = new SR();
+    recog.lang = "en-US";
+    recog.interimResults = false;
+    recog.maxAlternatives = 1;
+    recog.onresult = (e) => {
+      const said = e.results[0][0].transcript;
+      input.value = said;
+      send(said);                 // auto-send what you spoke
+    };
+    recog.onend = () => { listening = false; mic.classList.remove("rec"); };
+    recog.onerror = () => { listening = false; mic.classList.remove("rec"); };
+    mic.addEventListener("click", () => {
+      if (listening){ recog.stop(); return; }
+      try { recog.start(); listening = true; mic.classList.add("rec"); logActivity("🎙 Listening…"); }
+      catch(_){}
+    });
+  } else {
+    mic.disabled = true;
+    mic.title = "Voice input not supported in this browser (try Chrome/Edge)";
+    mic.style.opacity = .4;
+  }
 
   input.focus();
 })();
