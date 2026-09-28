@@ -127,6 +127,33 @@ class Brain:
         self._session = self._client.chats.create(model=self.model, config=config_obj)
         return self._session
 
+    def chat_stream(self, user_text: str):
+        """Yield DON's reply in chunks as it's generated (feels much faster).
+
+        Tools are NOT used in streaming mode for simple speed; if the model
+        wants a tool it will still work via the non-streaming chat() path. We
+        keep streaming for plain conversation, which is the common, latency-
+        sensitive case.
+        """
+        if not self._client:
+            yield ("My brain isn't connected yet. Add your GEMINI_API_KEY to .env "
+                   "and restart me.")
+            return
+        try:
+            chat = self._ensure_session()
+            stream = chat.send_message_stream(user_text)
+            got_any = False
+            for chunk in stream:
+                piece = getattr(chunk, "text", None)
+                if piece:
+                    got_any = True
+                    yield piece
+            if not got_any:
+                yield "Done, sir."
+        except Exception as exc:
+            self._session = None
+            yield self._friendly_error(exc)
+
     def chat(self, user_text: str) -> str:
         """Return DON's reply, using tools automatically. Never raises."""
         if not self._client:

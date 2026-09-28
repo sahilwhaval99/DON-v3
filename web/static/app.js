@@ -41,22 +41,36 @@
     add("user", text);
     input.value = "";
     sendBtn.disabled = true;
-    const thinking = add("think", "DON is thinking…");
+
+    // Create an empty DON bubble we fill as chunks stream in.
+    const bubbleWrap = add("don", "");
+    const bubble = bubbleWrap.querySelector(".b");
+    bubble.textContent = "…";
+    let full = "";
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/chat_stream", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({text})
       });
-      const data = await res.json();
-      thinking.remove();
-      const reply = data.reply || "…";
-      add("don", reply);
-      if (speakFn) speakFn(reply);
+      if (!res.body) throw new Error("no stream");
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let first = true;
+      while (true){
+        const {done, value} = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, {stream:true});
+        if (first){ bubble.textContent = ""; first = false; }
+        full += chunk;
+        bubble.textContent = full;
+        convo.scrollTop = convo.scrollHeight;
+      }
+      if (!full) bubble.textContent = "…";
+      if (speakFn && full) speakFn(full);
       logActivity("You: " + text.slice(0, 40));
       refreshReminders();
     } catch(e){
-      thinking.remove();
-      add("don", "Connection error: " + e.message + " (is the server still running?)");
+      bubble.textContent = "Connection error: " + e.message + " (is the server still running?)";
     } finally {
       sendBtn.disabled = false;
       input.focus();

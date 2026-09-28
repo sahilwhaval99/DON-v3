@@ -26,8 +26,9 @@ SQLITE_PATH = DATA_DIR / "don3.db"
 
 # ---------------- Gemini (the brain) ----------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Fast + free model. For SPEED, gemini-2.0-flash / flash-latest are fastest.
-GEMINI_MODEL = os.getenv("DON_GEMINI_MODEL", "gemini-2.0-flash")
+# Fast + free model. "flash-lite" is the fastest and has higher rate limits.
+# Override in .env with DON_GEMINI_MODEL if you prefer a different one.
+GEMINI_MODEL = os.getenv("DON_GEMINI_MODEL", "gemini-2.0-flash-lite")
 
 # Speed/quality knobs.
 # Lower max tokens = faster, snappier replies. Raise for longer answers.

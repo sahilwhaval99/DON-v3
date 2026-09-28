@@ -30,6 +30,17 @@ class Assistant:
     def brain_ready(self) -> bool:
         return self.brain.available
 
+    # Keywords that suggest a tool/action is needed (use non-stream tool path).
+    _TOOL_HINTS = (
+        "search", "google", "look up", "news", "latest", "weather", "temperature",
+        "open ", "launch", "screenshot", "remind", "reminder", "price", "stock",
+        "who won", "today", "current", "right now",
+    )
+
+    def _needs_tool(self, text: str) -> bool:
+        t = text.lower()
+        return any(h in t for h in self._TOOL_HINTS)
+
     def handle(self, text: str) -> str:
         text = (text or "").strip()
         if not text:
@@ -37,6 +48,28 @@ class Assistant:
         reply = self.brain.chat(text)
         self.memory.log_turn(text, reply)
         return reply
+
+    def handle_stream(self, text: str):
+        """Yield the reply in chunks for fast, live output.
+
+        For tool-needing requests we fall back to the full (non-stream) path so
+        web search / actions still work, then yield the whole answer at once.
+        For plain conversation we stream token-by-token (feels instant).
+        """
+        text = (text or "").strip()
+        if not text:
+            yield "I'm listening."
+            return
+        if self._needs_tool(text):
+            reply = self.brain.chat(text)
+            self.memory.log_turn(text, reply)
+            yield reply
+            return
+        collected = []
+        for piece in self.brain.chat_stream(text):
+            collected.append(piece)
+            yield piece
+        self.memory.log_turn(text, "".join(collected))
 
 
 if __name__ == "__main__":

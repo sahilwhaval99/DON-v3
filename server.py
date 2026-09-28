@@ -78,6 +78,40 @@ async def api_chat(request: Request):
     return JSONResponse({"reply": reply})
 
 
+@app.post("/api/chat_stream")
+async def api_chat_stream(request: Request):
+    """Stream the reply as plain-text chunks (Server-Sent-style)."""
+    from fastapi.responses import StreamingResponse
+    import queue as _queue
+    import threading as _th
+
+    data = await request.json()
+    text = (data or {}).get("text", "")
+
+    q: _queue.Queue = _queue.Queue()
+    SENTINEL = object()
+
+    def worker():
+        try:
+            for piece in assistant.handle_stream(text):
+                q.put(piece)
+        except Exception as exc:
+            q.put(f"[error: {exc}]")
+        finally:
+            q.put(SENTINEL)
+
+    _th.start_new_thread(worker, ())
+
+    async def gen():
+        while True:
+            piece = await asyncio.to_thread(q.get)
+            if piece is SENTINEL:
+                break
+            yield piece
+
+    return StreamingResponse(gen(), media_type="text/plain")
+
+
 @app.get("/api/status")
 async def api_status():
     return {
