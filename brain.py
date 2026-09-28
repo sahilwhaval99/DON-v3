@@ -113,52 +113,118 @@ class Brain:
             return ("My brain isn't connected yet. Please add your free Gemini API "
                     "key to the .env file (GEMINI_API_KEY=...), then restart me. "
                     "Get one at https://aistudio.google.com/apikey.")
-        import time
-
         types = self._types
-        tool_fns = list(self.tools.values())
+
+        # We do MANUAL function calling (more reliable than the SDK's automatic
+        # dispatch, which can raise isinstance() errors). We declare the tools,
+        # run any tool the model requests ourselves, and feed the result back.
         config_obj = types.GenerateContentConfig(
             system_instruction=config.SYSTEM_PROMPT,
-            tools=tool_fns if tool_fns else None,
+            tools=[types.Tool(function_declarations=self._declarations())]
+            if self.tools else None,
         )
-        contents = self._contents(user_text)
 
-        # Retry transient errors (503 overloaded, 429 rate-limit) with backoff.
-        last_exc = None
+        try:
+            chat = self._client.chats.create(model=self.model, config=config_obj)
+            resp = self._send_with_retry(chat, self._contents(user_text))
+
+            # Handle up to a few rounds of tool calls.
+            for _ in range(5):
+                calls = self._function_calls(resp)
+                if not calls:
+                    break
+                responses = []
+                for name, args in calls:
+                    fn = self.tools.get(name)
+                    try:
+                        result = fn(**args) if fn else f"(no tool '{name}')"
+                    except Exception as tool_exc:
+                        result = f"(tool '{name}' error: {tool_exc})"
+                    responses.append(types.Part.from_function_response(
+                        name=name, response={"result": str(result)}))
+                resp = self._send_with_retry(chat, responses)
+
+            text = (getattr(resp, "text", None) or "").strip()
+            return text or "Done, sir."
+        except Exception as exc:
+            return self._friendly_error(exc)
+
+    # -- function-calling helpers -------------------------------------- #
+    def _declarations(self) -> list:
+        """Describe each tool to Gemini (name, description, params).
+
+        Uses plain dicts for the schema, which the SDK accepts and which avoids
+        depending on exact helper-class names across SDK versions.
+        """
+        types = self._types
+        specs = {
+            "web_search": ("Search the live internet for current info, news, "
+                           "prices, or facts.", {"query": "The search query"}),
+            "get_weather": ("Get current weather for a location.",
+                            {"location": "City name (optional)"}),
+            "open_app": ("Open an app or website on the user's PC.",
+                         {"name": "e.g. notepad, calculator, youtube"}),
+            "take_screenshot": ("Capture a screenshot of the user's screen.", {}),
+            "add_reminder": ("Save a reminder for the user.",
+                             {"text": "reminder text", "when": "e.g. 5pm, in 10 min"}),
+        }
+        decls = []
+        for name, (desc, params) in specs.items():
+            if name not in self.tools:
+                continue
+            props = {k: types.Schema(type="STRING", description=v)
+                     for k, v in params.items()}
+            decls.append(types.FunctionDeclaration(
+                name=name, description=desc,
+                parameters=types.Schema(type="OBJECT", properties=props) if props else None,
+            ))
+        return decls
+
+    @staticmethod
+    def _function_calls(resp) -> list:
+        """Extract (name, args) tool calls from a response, if any."""
+        calls = []
+        try:
+            for cand in resp.candidates:
+                for part in cand.content.parts:
+                    fc = getattr(part, "function_call", None)
+                    if fc and fc.name:
+                        calls.append((fc.name, dict(fc.args or {})))
+        except Exception:
+            pass
+        return calls
+
+    def _send_with_retry(self, chat, message):
+        """Send a message, retrying transient 503/429 with backoff."""
+        import time
+        last = None
         for attempt in range(4):
             try:
-                chat = self._client.chats.create(model=self.model, config=config_obj)
-                resp = chat.send_message(contents)
-                text = (getattr(resp, "text", None) or "").strip()
-                return text or "I processed that but have nothing further to add."
+                return chat.send_message(message)
             except Exception as exc:
-                last_exc = exc
-                msg = str(exc)
-                transient = ("503" in msg or "UNAVAILABLE" in msg
-                             or "429" in msg or "RESOURCE_EXHAUSTED" in msg
-                             or "overloaded" in msg.lower())
+                last = exc
+                m = str(exc)
+                transient = any(x in m for x in
+                                ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED")) \
+                    or "overloaded" in m.lower()
                 if transient and attempt < 3:
-                    time.sleep(1.5 * (attempt + 1))  # 1.5s, 3s, 4.5s
+                    time.sleep(1.5 * (attempt + 1))
                     continue
-                break
+                raise
+        raise last
 
-        # All retries exhausted — return a friendly, specific message.
-        exc = last_exc
-        try:
-            raise exc
-        except Exception:
-            msg = str(exc)
-            if "503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower():
-                return ("Google's servers are momentarily busy (the model is under "
-                        "heavy demand). Please try that again in a few seconds, sir.")
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                return ("I've hit a brief rate limit. Give me a few seconds and try "
-                        "again, sir.")
-            if "NOT_FOUND" in msg or "not found" in msg or "404" in msg:
-                return (f"The model '{self.model}' isn't available on your "
-                        f"key. {self._suggest_models()}")
-            return (f"I hit a problem thinking about that: {exc}. "
-                    f"(If this mentions the API key, double-check it in your .env.)")
+    def _friendly_error(self, exc) -> str:
+        msg = str(exc)
+        if "503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower():
+            return ("Google's servers are momentarily busy. Please try that again "
+                    "in a few seconds, sir.")
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            return "I've hit a brief rate limit. Give me a few seconds, sir."
+        if "NOT_FOUND" in msg or "not found" in msg or "404" in msg:
+            return (f"The model '{self.model}' isn't available on your key. "
+                    f"{self._suggest_models()}")
+        return (f"I hit a problem thinking about that: {exc}. "
+                f"(If this mentions the API key, double-check it in your .env.)")
 
     def _suggest_models(self) -> str:
         """List models the key can actually use — so we never guess blindly."""
