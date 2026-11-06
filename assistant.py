@@ -19,9 +19,13 @@ class Assistant:
         # Register the tools DON can use. add_reminder is bound to memory.
         self.tools = {
             "web_search": T.web_search,
+            "fetch_webpage": T.fetch_webpage,
             "get_weather": T.get_weather,
             "open_app": T.open_app,
             "take_screenshot": T.take_screenshot,
+            "analyze_screen": T.analyze_screen,
+            "clipboard_action": T.clipboard_action,
+            "system_control": T.system_control,
             "add_reminder": T.make_reminder_tool(self.memory),
         }
         self.brain = Brain(tools=self.tools, memory=self.memory)

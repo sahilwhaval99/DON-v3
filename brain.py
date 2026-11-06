@@ -200,11 +200,19 @@ class Brain:
         specs = {
             "web_search": ("Search the live internet for current info, news, "
                            "prices, or facts.", {"query": "The search query"}),
+            "fetch_webpage": ("Fetch the actual text content of a URL or article.",
+                              {"url": "The full website or article URL"}),
             "get_weather": ("Get current weather for a location.",
                             {"location": "City name (optional)"}),
             "open_app": ("Open an app or website on the user's PC.",
                          {"name": "e.g. notepad, calculator, youtube"}),
             "take_screenshot": ("Capture a screenshot of the user's screen.", {}),
+            "analyze_screen": ("Take a screenshot of the screen and analyze it with AI vision.",
+                              {"prompt": "What to look for or question about the screen"}),
+            "clipboard_action": ("Read from or write to the system clipboard.",
+                                {"action": "'read' or 'write'", "text": "text to write if action is write"}),
+            "system_control": ("Control volume, media playback, or windows.",
+                              {"action": "mute, volume_up, volume_down, play_pause, next_track, prev_track, or minimize_all"}),
             "add_reminder": ("Save a reminder for the user.",
                              {"text": "reminder text", "when": "e.g. 5pm, in 10 min"}),
         }

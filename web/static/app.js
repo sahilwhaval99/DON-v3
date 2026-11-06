@@ -143,8 +143,8 @@
   (function draw(){
     g.clearRect(0,0,bg.width,bg.height);
     const sp = 44; off = (off + 0.25) % sp;
-    for (let x=-sp+off; x<bg.width; x+=sp){ g.strokeStyle="rgba(0,212,255,.05)"; g.beginPath(); g.moveTo(x,0); g.lineTo(x,bg.height); g.stroke(); }
-    for (let y=-sp+off; y<bg.height; y+=sp){ g.strokeStyle="rgba(255,59,59,.045)"; g.beginPath(); g.moveTo(0,y); g.lineTo(bg.width,y); g.stroke(); }
+    for (let x=-sp+off; x<bg.width; x+=sp){ g.strokeStyle="rgba(2,151,222,.06)"; g.beginPath(); g.moveTo(x,0); g.lineTo(x,bg.height); g.stroke(); }
+    for (let y=-sp+off; y<bg.height; y+=sp){ g.strokeStyle="rgba(252,115,77,.05)"; g.beginPath(); g.moveTo(0,y); g.lineTo(bg.width,y); g.stroke(); }
     requestAnimationFrame(draw);
   })();
 

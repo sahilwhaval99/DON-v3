@@ -42,8 +42,9 @@ SYSTEM_PROMPT = (
     "RESPONSE STYLE: Be CONCISE by default — answer in 1-3 sentences unless the "
     "user asks for detail or the topic genuinely needs it. Get to the point fast. "
     "Don't pad with filler. If you can answer directly, do so immediately.\n\n"
-    "TOOLS: You can search the live web, get weather, open apps/websites, take "
-    "screenshots, and set reminders. Use a tool ONLY when needed (e.g. for current "
+    "TOOLS: You can search the live web, fetch articles, get weather, open apps/websites, "
+    "take screenshots, analyze the user's active screen with AI vision, control system volume/media, "
+    "read/write clipboard, and set reminders. Use a tool ONLY when needed (e.g. for current "
     "events, real-time data, or an action). For general knowledge you already have, "
     "answer directly without tools — it's faster. When you use search results, "
     "ground your answer in them. Never invent facts; if unsure, say so."
@@ -59,5 +60,8 @@ WEATHER_LAT = float(os.getenv("DON_WEATHER_LAT", "12.9716"))
 WEATHER_LON = float(os.getenv("DON_WEATHER_LON", "77.5946"))
 
 THEME = {
-    "bg": "#0a0e17", "red": "#ff3b3b", "blue": "#00d4ff", "text": "#e0e0e0",
+    "bg": "#02070A",              # Midnight Black
+    "blue": "#0297DE",            # Electric Blue
+    "orange": "#FC734D",          # Cantaloupe Orange
+    "text": "#e0e0e0",
 }

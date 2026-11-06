@@ -142,6 +142,133 @@ def take_screenshot() -> str:
         return f"Couldn't take a screenshot: {exc}"
 
 
+def analyze_screen(prompt: str = "Explain what is on the screen and give helpful details.") -> str:
+    """Take a screenshot of the user's active screen and analyze it with AI vision."""
+    try:
+        import pyautogui
+        import base64
+        import io
+        from PIL import Image
+
+        img = pyautogui.screenshot()
+        # Save a copy locally
+        fname = _dt.datetime.now().strftime("shot_%Y%m%d_%H%M%S.png")
+        path = config.SCREENSHOTS_DIR / fname
+        img.save(str(path))
+
+        # Downscale if large for fast upload
+        max_dim = 1600
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim))
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        img_bytes = buf.getvalue()
+
+        # Call Gemini Vision directly
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                f"You are DON. Inspect this screenshot of the user's desktop/browser and answer: {prompt}"
+            ]
+        )
+        return response.text or "I observed the screen, sir, but could not discern any notable details."
+    except Exception as exc:
+        return f"Could not analyze screen: {exc}"
+
+
+def clipboard_action(action: str = "read", text: str = "") -> str:
+    """Read the current system clipboard or copy text into it.
+
+    Args:
+        action: 'read' to get clipboard contents, or 'write' to set it.
+        text: The text to copy to clipboard (only used when action='write').
+    """
+    try:
+        import pyperclip
+        action = (action or "read").strip().lower()
+        if action == "write":
+            pyperclip.copy(text)
+            return f"Copied to clipboard: '{text[:80]}...'" if len(text) > 80 else f"Copied to clipboard: '{text}'"
+        else:
+            val = pyperclip.paste()
+            if not val:
+                return "The clipboard is currently empty, sir."
+            return f"Current clipboard contents:\n{val[:1000]}"
+    except Exception as exc:
+        return f"Clipboard action failed: {exc}"
+
+
+def system_control(action: str) -> str:
+    """Control system volume, media playback, or window states.
+
+    Args:
+        action: 'mute', 'volume_up', 'volume_down', 'play_pause', 'next_track', 'prev_track', 'minimize_all'.
+    """
+    action = (action or "").strip().lower()
+    try:
+        import pyautogui
+        if action in ("mute", "volume_mute"):
+            pyautogui.press("volumemute")
+            return "Toggled system mute."
+        elif action in ("volume_up", "vol_up"):
+            for _ in range(5):
+                pyautogui.press("volumeup")
+            return "Turned volume up."
+        elif action in ("volume_down", "vol_down"):
+            for _ in range(5):
+                pyautogui.press("volumedown")
+            return "Turned volume down."
+        elif action in ("play_pause", "play", "pause"):
+            pyautogui.press("playpause")
+            return "Toggled media play/pause."
+        elif action in ("next_track", "next"):
+            pyautogui.press("nexttrack")
+            return "Skipped to next track."
+        elif action in ("prev_track", "prev"):
+            pyautogui.press("prevtrack")
+            return "Returned to previous track."
+        elif action in ("minimize_all", "desktop", "show_desktop"):
+            if OS_NAME == "Windows":
+                pyautogui.hotkey("win", "d")
+                return "Showing desktop (minimized all windows)."
+            return "Minimized windows."
+        else:
+            return f"Unknown system control action '{action}'. Supported: mute, volume_up, volume_down, play_pause, next_track, prev_track, minimize_all."
+    except Exception as exc:
+        return f"System control failed: {exc}"
+
+
+def fetch_webpage(url: str) -> str:
+    """Fetch the text content of a specific webpage or article URL.
+
+    Args:
+        url: The full web URL (e.g. https://example.com/article).
+    """
+    url = (url or "").strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        
+        # Strip scripts, styles, and tags
+        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return "The webpage returned empty or non-textual content."
+        return f"Webpage extract from {url}:\n" + text[:2500]
+    except Exception as exc:
+        return f"Could not fetch webpage: {exc}"
+
+
 # Reminder tool is created with memory bound in; see make_reminder_tool.
 def make_reminder_tool(memory):
     """Return an add_reminder(text, when) function bound to the memory store."""
